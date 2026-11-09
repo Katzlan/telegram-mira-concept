@@ -1,0 +1,657 @@
+diff --git a/submodules/DebugSettingsUI/Sources/DebugController.swift b/submodules/DebugSettingsUI/Sources/DebugController.swift
+index aa772928..8c6eafbb 100644
+--- a/submodules/DebugSettingsUI/Sources/DebugController.swift
++++ b/submodules/DebugSettingsUI/Sources/DebugController.swift
+@@ -169,6 +169,7 @@ private enum DebugControllerEntry: ItemListNodeEntry {
+     case coreListChatBackend(Bool)
+     case forceRLottieBackend(Bool)
+     case respectSystemMicrophone(Bool)
++    case miraAssistant(Bool)
+     case useModernVideoMessagePipeline(Bool)
+     case browserExperiment(Bool)
+     case allForumsHaveTabs(Bool)
+@@ -213,7 +214,7 @@ private enum DebugControllerEntry: ItemListNodeEntry {
+             return DebugControllerSection.web.rawValue
+         case .keepChatNavigationStack, .skipReadHistory, .alwaysDisplayTyping, .debugRatingLayout, .crashOnSlowQueries, .crashOnMemoryPressure:
+             return DebugControllerSection.experiments.rawValue
+-        case .clearTips, .resetNotifications, .crash, .fillLocalSavedMessageCache, .resetDatabase, .resetDatabaseAndCache, .resetHoles, .resetTagHoles, .reindexUnread, .resetCacheIndex, .reindexCache, .resetBiometricsData, .optimizeDatabase, .photoPreview, .knockoutWallpaper, .compressedEmojiCache, .storiesJpegExperiment, .checkSerializedData, .enableQuickReactionSwitch, .experimentalCompatibility, .enableDebugDataDisplay, .fakeGlass, .forceClearGlass, .debugRipple, .debugRichText, .coreListChatBackend, .forceRLottieBackend, .respectSystemMicrophone, .useModernVideoMessagePipeline, .browserExperiment, .allForumsHaveTabs, .enableReactionOverrides, .restorePurchases, .disableReloginTokens, .liveStreamV2, .experimentalCallMute, .groupCallReferenceEngine, .playerV2, .devRequests, .enableUpdates, .pwa, .enableLocalTranslation, .testPasscodeMigration:
++        case .clearTips, .resetNotifications, .crash, .fillLocalSavedMessageCache, .resetDatabase, .resetDatabaseAndCache, .resetHoles, .resetTagHoles, .reindexUnread, .resetCacheIndex, .reindexCache, .resetBiometricsData, .optimizeDatabase, .photoPreview, .knockoutWallpaper, .compressedEmojiCache, .storiesJpegExperiment, .checkSerializedData, .enableQuickReactionSwitch, .experimentalCompatibility, .enableDebugDataDisplay, .fakeGlass, .forceClearGlass, .debugRipple, .debugRichText, .coreListChatBackend, .forceRLottieBackend, .respectSystemMicrophone, .miraAssistant, .useModernVideoMessagePipeline, .browserExperiment, .allForumsHaveTabs, .enableReactionOverrides, .restorePurchases, .disableReloginTokens, .liveStreamV2, .experimentalCallMute, .groupCallReferenceEngine, .playerV2, .devRequests, .enableUpdates, .pwa, .enableLocalTranslation, .testPasscodeMigration:
+             return DebugControllerSection.experiments.rawValue
+         case .logTranslationRecognition, .resetTranslationStates:
+             return DebugControllerSection.translation.rawValue
+@@ -272,6 +273,8 @@ private enum DebugControllerEntry: ItemListNodeEntry {
+             return 20
+         case .respectSystemMicrophone:
+             return 21
++        case .miraAssistant:
++            return 66
+         case .useModernVideoMessagePipeline:
+             return 22
+         case .crashOnSlowQueries:
+@@ -1445,6 +1448,16 @@ private enum DebugControllerEntry: ItemListNodeEntry {
+                     })
+                 }).start()
+             })
++        case let .miraAssistant(value):
++            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "AI assistants in groups", value: value, sectionId: self.section, style: .blocks, updated: { value in
++                let _ = arguments.sharedContext.accountManager.transaction ({ transaction in
++                    transaction.updateSharedData(ApplicationSpecificSharedDataKeys.experimentalUISettings, { settings in
++                        var settings = settings?.get(ExperimentalUISettings.self) ?? ExperimentalUISettings.defaultSettings
++                        settings.miraAssistant = value
++                        return EnginePreferencesEntry(settings)
++                    })
++                }).start()
++            })
+         case let .useModernVideoMessagePipeline(value):
+             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Use Modern Video Message Pipeline", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                 let _ = arguments.sharedContext.accountManager.transaction ({ transaction in
+@@ -1838,6 +1851,7 @@ private func debugControllerEntries(context: AccountContext?, sharedContext: Sha
+     entries.append(.coreListChatBackend(experimentalSettings.coreListChatBackend))
+     entries.append(.forceRLottieBackend(experimentalSettings.forceRLottieBackend))
+     entries.append(.respectSystemMicrophone(experimentalSettings.respectSystemMicrophone))
++    entries.append(.miraAssistant(experimentalSettings.miraAssistant))
+     entries.append(.useModernVideoMessagePipeline(experimentalSettings.useModernVideoMessagePipeline ?? (context?.getAppConfigValue("ios_killswitch_disable_neo_round_camera_v2") == nil)))
+     entries.append(.crashOnSlowQueries(presentationData.theme, experimentalSettings.crashOnLongQueries))
+     entries.append(.crashOnMemoryPressure(presentationData.theme, experimentalSettings.crashOnMemoryPressure))
+diff --git a/submodules/Display/Source/WindowContent.swift b/submodules/Display/Source/WindowContent.swift
+index edbdcd58..0d9673d5 100644
+--- a/submodules/Display/Source/WindowContent.swift
++++ b/submodules/Display/Source/WindowContent.swift
+@@ -281,9 +281,11 @@ public final class WindowHostView {
+     /// Multi-display devices only: the fold while the system reports it active, in `eventView`
+     /// coordinates. Nil before iOS 27.1.
+     fileprivate var activeDivision: CGRect? {
++        #if compiler(>=6.4) // iOS 27 SDK (Xcode 27); Xcode 26.x ships Swift 6.3 and has no reservedRegions
+         if #available(iOS 27.1, *) {
+             return self.eventView.reservedRegions(kind: .division).first(where: \.isActive)?.frame
+         }
++        #endif
+         return nil
+     }
+     
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageItemCommon/Sources/ChatMessageItemCommon.swift b/submodules/TelegramUI/Components/Chat/ChatMessageItemCommon/Sources/ChatMessageItemCommon.swift
+index fc189879..942bbf33 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageItemCommon/Sources/ChatMessageItemCommon.swift
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageItemCommon/Sources/ChatMessageItemCommon.swift
+@@ -273,9 +273,12 @@ public func messageIsEligibleForLargeCustomEmoji(_ message: EngineMessage) -> Bo
+     return true
+ }
+ 
++/// Prototype: lets the Mira demo (fictional local chats, see MiraDemo in TelegramUI) take reactions on local messages.
++public var localMessageReactionsAllowed: ((EngineMessage.Id) -> Bool)?
++
+ public func canAddMessageReactions(message: EngineMessage) -> Bool {
+     if message.id.namespace != Namespaces.Message.Cloud {
+-        return false
++        return localMessageReactionsAllowed?(message.id) ?? false
+     }
+     if let peer = message.peers[message.id.peerId] {
+         if let _ = peer as? TelegramSecretChat {
+diff --git a/submodules/TelegramUI/Components/Chat/ChatNavigationButton/Sources/ChatNavigationButton.swift b/submodules/TelegramUI/Components/Chat/ChatNavigationButton/Sources/ChatNavigationButton.swift
+index 0d04611d..3111ab43 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatNavigationButton/Sources/ChatNavigationButton.swift
++++ b/submodules/TelegramUI/Components/Chat/ChatNavigationButton/Sources/ChatNavigationButton.swift
+@@ -15,6 +15,8 @@ public enum ChatNavigationButtonAction: Equatable {
+     case toggleInfoPanel
+     case spacer
+     case edit
++    /// Prototype: opens the group's AI assistant (see MiraAssistant in TelegramUI).
++    case openAssistant
+ }
+ 
+ public struct ChatNavigationButton: Equatable {
+diff --git a/submodules/TelegramUI/Components/Chat/ChatTextInputPanelNode/Sources/ChatTextInputPanelNode.swift b/submodules/TelegramUI/Components/Chat/ChatTextInputPanelNode/Sources/ChatTextInputPanelNode.swift
+index d628df00..876b465a 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatTextInputPanelNode/Sources/ChatTextInputPanelNode.swift
++++ b/submodules/TelegramUI/Components/Chat/ChatTextInputPanelNode/Sources/ChatTextInputPanelNode.swift
+@@ -234,6 +234,11 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
+     private let sendAsAvatarNode: AvatarNode
+     private let sendAsCloseIconView: UIImageView
+     
++    /// Prototype: a round blue "@" button left of the attach button in groups; starts a mention
++    /// (AI assistants such as @mira are offered first, see MiraAssistant in TelegramUI).
++    private let mentionButton: HighlightTrackingButton
++    private let mentionButtonIcon: UIImageView
++
+     public let attachmentButton: HighlightTrackingButton
+     public let attachmentButtonBackground: GlassBackgroundView
+     private let attachmentButtonIcon: UIImageView
+@@ -726,6 +731,17 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
+         self.sendAsAvatarNode = AvatarNode(font: avatarPlaceholderFont(size: 16.0))
+         self.sendAsCloseIconView = UIImageView()
+         
++        self.mentionButton = HighlightTrackingButton()
++        self.mentionButton.accessibilityLabel = "Mention"
++        self.mentionButton.backgroundColor = UIColor(rgb: 0x007aff)
++        self.mentionButton.layer.cornerRadius = 20.0
++        self.mentionButton.clipsToBounds = true
++        self.mentionButtonIcon = UIImageView(image: UIImage(systemName: "at", withConfiguration: UIImage.SymbolConfiguration(pointSize: 19.0, weight: .semibold)))
++        self.mentionButtonIcon.tintColor = .white
++        self.mentionButtonIcon.contentMode = .center
++        self.mentionButtonIcon.isUserInteractionEnabled = false
++        self.mentionButton.addSubview(self.mentionButtonIcon)
++
+         self.attachmentButton = HighlightTrackingButton()
+         self.attachmentButton.accessibilityLabel = presentationInterfaceState.strings.VoiceOver_AttachMedia
+         self.attachmentButton.accessibilityTraits = [.button]
+@@ -868,6 +884,10 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
+         }
+         
+         self.attachmentButton.addTarget(self, action: #selector(self.attachmentButtonPressed), for: .touchUpInside)
++        self.mentionButton.addTarget(self, action: #selector(self.mentionButtonPressed), for: .touchUpInside)
++        self.mentionButton.highligthedChanged = { [weak self] highlighted in
++            self?.mentionButton.alpha = highlighted ? 0.7 : 1.0
++        }
+         self.attachmentButton.highligthedChanged = { [weak self] highlighted in
+             if let self {
+                 if highlighted {
+@@ -1000,6 +1020,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
+         self.textInputContainerBackgroundView.contentView.addSubview(self.sendAsAvatarButtonNode.view)
+         
+         self.glassBackgroundContainer.contentView.addSubview(self.menuButton.view)
++        self.glassBackgroundContainer.contentView.addSubview(self.mentionButton)
+         self.glassBackgroundContainer.contentView.addSubview(self.attachmentButtonBackground)
+         self.glassBackgroundContainer.contentView.addSubview(self.attachmentButtonDisabledNode.view)
+         
+@@ -1809,6 +1830,16 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
+         if mediaRecordingState != nil || interfaceState.interfaceState.mediaDraftState != nil {
+             hasMenuButton = false
+         }
++
++        // Prototype: the "@" button, in groups only.
++        var hasMentionButton = false
++        if let context = self.context, context.sharedContext.immediateExperimentalUISettings.miraAssistant, !hasMenuButton, !displaySendAsAvatarButton, interfaceState.editMessageState == nil, mediaRecordingState == nil, interfaceState.interfaceState.mediaDraftState == nil {
++            if interfaceState.renderedPeer?.peer is TelegramGroup {
++                hasMentionButton = true
++            } else if let channel = interfaceState.renderedPeer?.peer as? TelegramChannel, case .group = channel.info {
++                hasMentionButton = true
++            }
++        }
+         
+         let buttonInset: CGFloat = max(leftInset, 16.0)
+         let maximumButtonWidth: CGFloat = min(430.0, width)
+@@ -2404,6 +2435,8 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
+             } else {
+                 leftMenuInset = menuCollapsedButtonWidth + menuButtonSpacing
+             }
++        } else if hasMentionButton {
++            leftMenuInset = 40.0 + 6.0
+         } else {
+             leftMenuInset = 0.0
+         }
+@@ -2608,6 +2641,13 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
+         transition.updateAlpha(node: self.menuButton, alpha: showMenuButton ? 1.0 : 0.0)
+         
+         self.menuButton.isUserInteractionEnabled = hasMenuButton
++
++        let mentionButtonFrame = CGRect(x: leftInset + 8.0, y: menuButtonOriginY, width: 40.0, height: 40.0)
++        transition.updateFrame(view: self.mentionButton, frame: mentionButtonFrame)
++        self.mentionButtonIcon.frame = CGRect(origin: .zero, size: mentionButtonFrame.size)
++        transition.updateTransformScale(layer: self.mentionButton.layer, scale: hasMentionButton ? 1.0 : 0.001)
++        transition.updateAlpha(layer: self.mentionButton.layer, alpha: hasMentionButton ? 1.0 : 0.0)
++        self.mentionButton.isUserInteractionEnabled = hasMentionButton
+         
+         var textFieldInsets = self.textFieldInsets(metrics: metrics, bottomInset: bottomInset)
+         if additionalSideInsets.right > 0.0 {
+@@ -5675,6 +5715,42 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
+         }
+     }
+ 
++    /// Starts a mention: adds "@" at the end of the text and opens the keyboard, so the mention list appears.
++    @objc func mentionButtonPressed() {
++        // Typed into the field like a key press, so the mention list opens the same way as when "@" is typed.
++        // (Setting the input state directly is lost while the field is still being focused.)
++        // What the field shows right now (the interface state can lag behind a key press).
++        let rawText = self.richTextInputNode?.text ?? self.presentationInterfaceState?.interfaceState.effectiveInputState.inputText.string ?? ""
++        // Ignore invisible characters the field keeps around (zero-width spaces, attachment placeholders).
++        let invisible = CharacterSet(charactersIn: "\u{200B}\u{200C}\u{200D}\u{2060}\u{FEFF}\u{FFFC}")
++        let text = String(String.UnicodeScalarView(rawText.unicodeScalars.filter { !invisible.contains($0) }))
++        // A mention is already started and nobody picked yet: shake the field instead of adding another "@".
++        if text.hasSuffix("@") {
++            self.ensureFocused()
++            let capsule = self.textInputContainerBackgroundView
++            capsule.layer.addShakeAnimation()
++            if let inputView = self.richTextInputNode?.inputView, !inputView.isDescendant(of: capsule) {
++                inputView.layer.addShakeAnimation()
++            }
++            return
++        }
++        var insertion = "@"
++        if let last = text.last, !last.isWhitespace {
++            insertion = " @"
++        }
++        self.ensureFocused()
++        DispatchQueue.main.async { [weak self] in
++            guard let self else {
++                return
++            }
++            if let keyInput = self.richTextInputNode?.inputView as? UIKeyInput {
++                keyInput.insertText(insertion)
++            } else {
++                self.insertText(text: NSAttributedString(string: insertion))
++            }
++        }
++    }
++
+     @objc func attachmentButtonPressed() {
+         if let presentationInterfaceState = self.presentationInterfaceState, presentationInterfaceState.interfaceState.mediaDraftState != nil {
+             self.viewOnce = false
+diff --git a/submodules/TelegramUI/Sources/ApplicationContext.swift b/submodules/TelegramUI/Sources/ApplicationContext.swift
+index db742a0b..fdec3736 100644
+--- a/submodules/TelegramUI/Sources/ApplicationContext.swift
++++ b/submodules/TelegramUI/Sources/ApplicationContext.swift
+@@ -262,6 +262,25 @@ final class AuthorizedApplicationContext {
+             self.isReady.set(.single(true))
+         }
+         
++        // Prototype: `--mira-demo` seeds the fictional demo chats and opens the first one (see MiraDemo).
++        if MiraDemo.isRequested {
++            MiraDemo.start(context: context, openChat: { [weak self] peerId in
++                guard let self else {
++                    return
++                }
++                let context = self.context
++                let _ = (context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: peerId))
++                |> deliverOnMainQueue).start(next: { [weak self] peer in
++                    guard let self, let peer else {
++                        return
++                    }
++                    context.sharedContext.navigateToChatController(NavigateToChatControllerParams(navigationController: self.rootController, context: context, chatLocation: .peer(peer)))
++                })
++            })
++        } else {
++            MiraDemo.hideFromChatList(context: context)
++        }
++
+         let accountId = context.account.id
+         self.loggedOutDisposable.set((context.account.loggedOut
+         |> deliverOnMainQueue).start(next: { [weak self] value in
+@@ -291,7 +310,8 @@ final class AuthorizedApplicationContext {
+         }))
+ 
+         let engine = context.engine
+-        self.notificationMessagesDisposable.set((context.account.stateManager.notificationMessages
++        // Prototype: in the Mira demo only the script's notifications show (see MiraDemo).
++        self.notificationMessagesDisposable.set((MiraDemo.notificationSource(real: context.account.stateManager.notificationMessages)
+         |> mapToSignal { messageList -> Signal<[([Message], PeerGroupId, Bool, MessageHistoryThreadData?)], NoError> in
+             return engine.data.get(EngineDataMap(
+                 messageList.compactMap { item -> TelegramEngine.EngineData.Item.Messages.ChatListIndex? in
+diff --git a/submodules/TelegramUI/Sources/Chat/ChatControllerLoadDisplayNode.swift b/submodules/TelegramUI/Sources/Chat/ChatControllerLoadDisplayNode.swift
+index dd139cdc..782a869d 100644
+--- a/submodules/TelegramUI/Sources/Chat/ChatControllerLoadDisplayNode.swift
++++ b/submodules/TelegramUI/Sources/Chat/ChatControllerLoadDisplayNode.swift
+@@ -1075,6 +1075,13 @@ extension ChatControllerImpl {
+                     }
+                 }
+                 
++                // Prototype: messages in the Mira demo chats stay on the device (see MiraDemo).
++                if MiraDemo.isDemoChat(peerId), let demo = MiraDemo.shared {
++                    demo.userSent(transformedMessages, peerId: peerId)
++                    strongSelf.chatDisplayNode.historyNode.scrollToEndOfHistory()
++                    return
++                }
++
+                 let _ = (strongSelf.shouldDivertMessagesToScheduled(messages: transformedMessages)
+                 |> deliverOnMainQueue).start(next: { shouldDivert in
+                     let signal: Signal<[MessageId?], NoError>
+@@ -5169,7 +5176,14 @@ extension ChatControllerImpl {
+                 
+                 if let activitySpace = activitySpace, let peerId = peerId {
+                     self.peerInputActivitiesDisposable?.dispose()
+-                    self.peerInputActivitiesDisposable = (self.context.account.peerInputActivities(peerId: activitySpace)
++                    self.peerInputActivitiesDisposable = (combineLatest(
++                        self.context.account.peerInputActivities(peerId: activitySpace),
++                        // Prototype: scripted "is typing" in the Mira demo chats (see MiraDemo).
++                        MiraDemo.typingActivities(peerId: peerId)
++                    )
++                    |> map { activities, demoActivities -> [(PeerId, PeerInputActivity)] in
++                        return demoActivities + activities
++                    }
+                     |> mapToSignal { activities -> Signal<[(EnginePeer, PeerInputActivity)], NoError> in
+                         var foundAllPeers = true
+                         var cachedResult: [(EnginePeer, PeerInputActivity)] = []
+diff --git a/submodules/TelegramUI/Sources/Chat/ChatControllerNavigationButtonAction.swift b/submodules/TelegramUI/Sources/Chat/ChatControllerNavigationButtonAction.swift
+index 08aab982..9472535f 100644
+--- a/submodules/TelegramUI/Sources/Chat/ChatControllerNavigationButtonAction.swift
++++ b/submodules/TelegramUI/Sources/Chat/ChatControllerNavigationButtonAction.swift
+@@ -714,6 +714,8 @@ extension ChatControllerImpl {
+             }
+         case .edit:
+             self.editChat()
++        case .openAssistant:
++            self.openAssistant()
+         }
+     }
+ }
+diff --git a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenMessageContextMenu.swift b/submodules/TelegramUI/Sources/Chat/ChatControllerOpenMessageContextMenu.swift
+index 5bf77c1b..3bb4f782 100644
+--- a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenMessageContextMenu.swift
++++ b/submodules/TelegramUI/Sources/Chat/ChatControllerOpenMessageContextMenu.swift
+@@ -627,6 +627,14 @@ extension ChatControllerImpl {
+                             }
+                         }
+                         
++                        // Prototype: reactions in the Mira demo chats stay on the device (see MiraDemo).
++                        if MiraDemo.isDemoChat(message.id.peerId), let demo = MiraDemo.shared {
++                            demo.setOwnReaction(messageId: message.id, emoji: updatedReactions.compactMap({ reaction -> String? in
++                                if case let .builtin(value) = reaction { return value }
++                                return nil
++                            }).first)
++                            return
++                        }
+                         let _ = updateMessageReactionsInteractively(account: self.context.account, messageIds: [message.id], reactions: mappedUpdatedReactions, isLarge: isLarge, storeAsRecentlyUsed: true).startStandalone()
+                     }
+                 }
+diff --git a/submodules/TelegramUI/Sources/Chat/ChatControllerSideColumn.swift b/submodules/TelegramUI/Sources/Chat/ChatControllerSideColumn.swift
+index 0faffb55..a8b58afb 100644
+--- a/submodules/TelegramUI/Sources/Chat/ChatControllerSideColumn.swift
++++ b/submodules/TelegramUI/Sources/Chat/ChatControllerSideColumn.swift
+@@ -8,6 +8,10 @@ import ChatSideColumnLayout
+ /// (docs/iphone-duo-layout.md).
+ extension ChatControllerImpl {
+     private var rightNavigationButtonsInBarOrder: [ChatNavigationButton] {
++        // Prototype: the AI assistant button goes left of the group avatar (see MiraAssistant).
++        if let secondary = self.secondaryRightNavigationButton, case .openAssistant = secondary.action {
++            return [secondary, self.rightNavigationButton].compactMap { $0 }
++        }
+         return [self.rightNavigationButton, self.secondaryRightNavigationButton].compactMap { $0 }
+     }
+ 
+diff --git a/submodules/TelegramUI/Sources/Chat/UpdateChatPresentationInterfaceState.swift b/submodules/TelegramUI/Sources/Chat/UpdateChatPresentationInterfaceState.swift
+index fbc8ebfb..4475da2e 100644
+--- a/submodules/TelegramUI/Sources/Chat/UpdateChatPresentationInterfaceState.swift
++++ b/submodules/TelegramUI/Sources/Chat/UpdateChatPresentationInterfaceState.swift
+@@ -31,7 +31,7 @@ extension ChatControllerImpl {
+             self.rightNavigationButton = nil
+         }
+ 
+-        if let button = secondaryRightNavigationButtonForChatInterfaceState(context: self.context, presentationInterfaceState: presentationInterfaceState, strings: presentationInterfaceState.strings, currentButton: self.secondaryRightNavigationButton, target: self, selector: #selector(self.secondaryRightNavigationButtonAction), chatInfoNavigationButton: self.chatInfoNavigationButton, moreInfoNavigationButton: self.moreInfoNavigationButton) {
++        if let button = secondaryRightNavigationButtonForChatInterfaceState(context: self.context, presentationInterfaceState: presentationInterfaceState, strings: presentationInterfaceState.strings, currentButton: self.secondaryRightNavigationButton, target: self, selector: #selector(self.secondaryRightNavigationButtonAction), chatInfoNavigationButton: self.chatInfoNavigationButton, moreInfoNavigationButton: self.moreInfoNavigationButton, assistantNavigationButton: self.assistantNavigationButton) {
+             if self.secondaryRightNavigationButton != button {
+                 if let currentButton = self.secondaryRightNavigationButton?.action, currentButton == button.action {
+                     buttonsAnimated = false
+diff --git a/submodules/TelegramUI/Sources/ChatController.swift b/submodules/TelegramUI/Sources/ChatController.swift
+index c9480979..12d1f5c5 100644
+--- a/submodules/TelegramUI/Sources/ChatController.swift
++++ b/submodules/TelegramUI/Sources/ChatController.swift
+@@ -311,6 +311,8 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+     
+     var moreBarButton: MoreHeaderButton
+     var moreInfoNavigationButton: ChatNavigationButton?
++    /// Prototype: the group's AI assistant button (see MiraAssistant).
++    var assistantNavigationButton: ChatNavigationButton?
+     
+     var historyStateDisposable: Disposable?
+     
+@@ -2261,6 +2263,14 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+                             })
+                         }
+                         
++                        // Prototype: reactions in the Mira demo chats stay on the device (see MiraDemo).
++                        if MiraDemo.isDemoChat(message.id.peerId), let demo = MiraDemo.shared {
++                            demo.setOwnReaction(messageId: message.id, emoji: updatedReactions.compactMap({ reaction -> String? in
++                                if case let .builtin(value) = reaction { return value }
++                                return nil
++                            }).first)
++                            return
++                        }
+                         let _ = updateMessageReactionsInteractively(account: strongSelf.context.account, messageIds: [message.id], reactions: mappedUpdatedReactions, isLarge: false, storeAsRecentlyUsed: false).startStandalone()
+                     }
+                 }
+@@ -6427,6 +6437,12 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+         chatInfoButtonItem.action = #selector(self.rightNavigationButtonAction)
+         self.chatInfoNavigationButton = ChatNavigationButton(action: .openChatInfo(expandAvatar: true, section: nil), buttonItem: chatInfoButtonItem)
+         
++        if MiraAssistant.isEnabled(self.context), case .peer = self.chatLocation {
++            let assistantButtonNode = MiraAssistantNavigationButtonNode(context: self.context, theme: self.presentationData.theme)
++            assistantButtonNode.addTarget(self, action: #selector(self.secondaryRightNavigationButtonAction), forControlEvents: .touchUpInside)
++            self.assistantNavigationButton = ChatNavigationButton(action: .openAssistant, buttonItem: UIBarButtonItem(customDisplayNode: assistantButtonNode)!)
++        }
++
+         self.moreBarButton.setContent(.more(MoreHeaderButton.optionsCircleImage(color: self.presentationData.theme.rootController.navigationBar.buttonColor)))
+         self.moreInfoNavigationButton = ChatNavigationButton(action: .toggleInfoPanel, buttonItem: UIBarButtonItem(customDisplayNode: self.moreBarButton)!)
+         self.moreBarButton.contextAction = { [weak self] sourceNode, gesture in
+@@ -7854,6 +7870,10 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+         super.viewDidAppear(animated)
+         
+         self.didAppear = true
++        // Prototype: the Mira demo script reacts to the group being opened (see MiraDemo).
++        if let peerId = self.chatLocation.peerId, MiraDemo.isDemoChat(peerId) {
++            MiraDemo.shared?.chatDidAppear(peerId: peerId)
++        }
+         
+         self.chatDisplayNode.historyNode.experimentalSnapScrollToItem = false
+         self.chatDisplayNode.historyNode.canReadHistory.set(self.computedCanReadHistoryPromise.get())
+@@ -8425,6 +8445,9 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+         self.chatDisplayNode.isScrollingLockedAtTop = isScrollingLockedAtTop
+     }
+     
++    /// Prototype: while Mira's side panel is open, the keyboard belongs to the panel; the group stays as it is.
++    var ignoresKeyboardForSidePanel = false
++
+     override public func containerLayoutUpdated(_ layout: ContainerViewLayout, transition: ContainedViewLayoutTransition) {
+         self.suspendNavigationBarLayout = true
+         super.containerLayoutUpdated(layout, transition: transition)
+@@ -8473,6 +8496,10 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+         if !layout.presentsFloatingPanels, let attachmentController = self.attachmentController, attachmentController.window != nil {
+             layout = layout.withUpdatedInputHeight(nil)
+         }
++        // Prototype: the same for Mira's side panel (see MiraSidePanel).
++        if self.ignoresKeyboardForSidePanel {
++            layout = layout.withUpdatedInputHeight(nil)
++        }
+                 
+         var navigationBarTransition = transition
+         self.chatDisplayNode.containerLayoutUpdated(layout, navigationBarHeight: self.navigationLayout(layout: layout).navigationFrame.maxY, transition: transition, listViewTransaction: { updateSizeAndInsets, additionalScrollDistance, scrollToTop, completion in
+diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateContextQueries.swift b/submodules/TelegramUI/Sources/ChatInterfaceStateContextQueries.swift
+index 2b3f3484..2f4749da 100644
+--- a/submodules/TelegramUI/Sources/ChatInterfaceStateContextQueries.swift
++++ b/submodules/TelegramUI/Sources/ChatInterfaceStateContextQueries.swift
+@@ -153,11 +153,20 @@ private func updatedContextQueryResultStateForQuery(context: AccountContext, pee
+         
+             let participants: Signal<(ChatPresentationInputQueryResult?) -> ChatPresentationInputQueryResult?, ChatContextQueryError>
+             if let peer {
++                // Prototype: AI assistants (e.g. @mira) are offered first in groups, even when they are not members:
++                // Telegram lets a mentioned bot answer the message it was mentioned in.
++                let assistants: Signal<[EnginePeer], NoError> = MiraAssistant.isEnabled(context) && MiraAssistant.canAssist(in: peer)
++                    ? MiraAssistant.assistantPeers(context: context, matching: normalizedQuery)
++                    : .single([])
+                 participants = combineLatest(
+                     inlineBots,
+-                    searchPeerMembers(context: context, peerId: peer.id, chatLocation: chatLocation, query: query, scope: .mention)
++                    // Prototype: the Mira demo group's members are fictional (see MiraDemo).
++                    MiraDemo.isDemoChat(peer.id) ? MiraDemo.memberPeers(matching: normalizedQuery) : searchPeerMembers(context: context, peerId: peer.id, chatLocation: chatLocation, query: query, scope: .mention),
++                    assistants
+                 )
+-                |> map { inlineBots, peers -> (ChatPresentationInputQueryResult?) -> ChatPresentationInputQueryResult? in
++                |> map { inlineBots, peers, assistants -> (ChatPresentationInputQueryResult?) -> ChatPresentationInputQueryResult? in
++                    // Prototype: the Mira demo chats show only their fictional members (see MiraDemo).
++                    let inlineBots = MiraDemo.isDemoChat(peer.id) ? [] : inlineBots
+                     let filteredInlineBots = inlineBots.sorted(by: { $0.1 > $1.1 }).filter { peer, rating in
+                         if rating < 0.14 {
+                             return false
+@@ -190,6 +199,9 @@ private func updatedContextQueryResultStateForQuery(context: AccountContext, pee
+                     sortedPeers = sortedPeers.filter { peer in
+                         return !peer.displayTitle(strings: strings, displayOrder: .firstLast).isEmpty
+                     }
++                    let assistantIds = Set(assistants.map(\.id))
++                    sortedPeers.removeAll(where: { assistantIds.contains($0.id) })
++                    sortedPeers.insert(contentsOf: assistants, at: 0)
+                     return { _ in return .mentions(sortedPeers) }
+                 }
+                 |> castError(ChatContextQueryError.self)
+@@ -277,7 +289,11 @@ private func updatedContextQueryResultStateForQuery(context: AccountContext, pee
+             guard let chatPeerId = chatLocation.peerId else {
+                 return .single({ _ in return .contextRequestResult(nil, nil) })
+             }
+-        
++            // Prototype: "@mira …" is a question to an AI assistant, not an inline query; keep the mention list instead.
++            if MiraAssistant.isEnabled(context) && MiraAssistant.isAssistantUsername(addressName) {
++                return .single({ _ in return .contextRequestResult(nil, nil) })
++            }
++
+             var delayRequest = true
+             var signal: Signal<(ChatPresentationInputQueryResult?) -> ChatPresentationInputQueryResult?, ChatContextQueryError> = .complete()
+             if let previousQuery = previousQuery {
+diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateNavigationButtons.swift b/submodules/TelegramUI/Sources/ChatInterfaceStateNavigationButtons.swift
+index 798523af..6b3c08c3 100644
+--- a/submodules/TelegramUI/Sources/ChatInterfaceStateNavigationButtons.swift
++++ b/submodules/TelegramUI/Sources/ChatInterfaceStateNavigationButtons.swift
+@@ -274,7 +274,7 @@ func rightNavigationButtonForChatInterfaceState(context: AccountContext, present
+     return chatInfoNavigationButton
+ }
+ 
+-func secondaryRightNavigationButtonForChatInterfaceState(context: AccountContext, presentationInterfaceState: ChatPresentationInterfaceState, strings: PresentationStrings, currentButton: ChatNavigationButton?, target: Any?, selector: Selector?, chatInfoNavigationButton: ChatNavigationButton?, moreInfoNavigationButton: ChatNavigationButton?) -> ChatNavigationButton? {
++func secondaryRightNavigationButtonForChatInterfaceState(context: AccountContext, presentationInterfaceState: ChatPresentationInterfaceState, strings: PresentationStrings, currentButton: ChatNavigationButton?, target: Any?, selector: Selector?, chatInfoNavigationButton: ChatNavigationButton?, moreInfoNavigationButton: ChatNavigationButton?, assistantNavigationButton: ChatNavigationButton? = nil) -> ChatNavigationButton? {
+     if presentationInterfaceState.interfaceState.selectionState != nil {
+         return nil
+     }
+@@ -282,6 +282,10 @@ func secondaryRightNavigationButtonForChatInterfaceState(context: AccountContext
+         if case .peer(context.account.peerId) = presentationInterfaceState.chatLocation, presentationInterfaceState.subject != .scheduledMessages, presentationInterfaceState.hasSavedChats {
+             return moreInfoNavigationButton
+         }
++        // Prototype: the group's AI assistant, next to the group avatar.
++        if let assistantNavigationButton, presentationInterfaceState.subject == nil, MiraAssistant.isEnabled(context), MiraAssistant.canAssist(in: presentationInterfaceState.renderedPeer?.peer) {
++            return assistantNavigationButton
++        }
+     }
+     
+     return nil
+diff --git a/submodules/TelegramUI/Sources/MentionChatInputPanelItem.swift b/submodules/TelegramUI/Sources/MentionChatInputPanelItem.swift
+index c4937870..ea389c89 100644
+--- a/submodules/TelegramUI/Sources/MentionChatInputPanelItem.swift
++++ b/submodules/TelegramUI/Sources/MentionChatInputPanelItem.swift
+@@ -100,6 +100,7 @@ final class MentionChatInputPanelItemNode: ListViewItemNode {
+         
+     private let avatarNode: AvatarNode
+     private let textNode: TextNode
++    private let badgeNode: ASImageNode
+     private let separatorNode: ASDisplayNode
+     private let highlightedBackgroundNode: ASDisplayNode
+     
+@@ -120,6 +121,10 @@ final class MentionChatInputPanelItemNode: ListViewItemNode {
+         self.avatarNode = AvatarNode(font: avatarFont)
+         self.textNode = TextNode()
+         
++        self.badgeNode = ASImageNode()
++        self.badgeNode.isLayerBacked = true
++        self.badgeNode.displaysAsynchronously = false
++        
+         self.separatorNode = ASDisplayNode()
+         self.separatorNode.isLayerBacked = true
+         
+@@ -135,6 +140,7 @@ final class MentionChatInputPanelItemNode: ListViewItemNode {
+         
+         self.addSubnode(self.avatarNode)
+         self.addSubnode(self.textNode)
++        self.addSubnode(self.badgeNode)
+         
+         self.addSubnode(self.activateAreaNode)
+     }
+@@ -169,7 +175,10 @@ final class MentionChatInputPanelItemNode: ListViewItemNode {
+             let secondaryFont = Font.regular(floor(item.presentationData.fontSize.baseDisplaySize * 14.0 / 17.0))
+             
+             let leftInset: CGFloat = 55.0 + params.leftInset
+-            let rightInset: CGFloat = 10.0 + params.rightInset
++            // Prototype: AI assistants (e.g. @mira) get a subtitle and an "AI" badge.
++            let isMira = MiraAssistant.isAssistant(item.peer)
++            let badgeImage: UIImage? = isMira ? MiraAssistant.badgeImage : nil
++            let rightInset: CGFloat = 10.0 + params.rightInset + (badgeImage.flatMap { $0.size.width + 10.0 } ?? 0.0)
+             
+             var updatedInverted: Bool?
+             if previousItem?.inverted != item.inverted {
+@@ -185,10 +194,14 @@ final class MentionChatInputPanelItemNode: ListViewItemNode {
+                 string.append(NSAttributedString(string: " @\(addressName)", font: secondaryFont, textColor: item.presentationData.theme.list.itemSecondaryTextColor))
+                 username = "@\(addressName)"
+             }
++            if isMira {
++                let subtitleFont = Font.regular(floor(item.presentationData.fontSize.baseDisplaySize * 12.0 / 17.0))
++                string.append(NSAttributedString(string: "\n" + MiraAssistant.subtitle, font: subtitleFont, textColor: item.presentationData.theme.list.itemSecondaryTextColor))
++            }
+             
+-            let (textLayout, textApply) = makeTextLayout(TextNodeLayoutArguments(attributedString: string, backgroundColor: nil, maximumNumberOfLines: 1, truncationType: .end, constrainedSize: CGSize(width: params.width - leftInset - rightInset, height: 100.0), alignment: .natural, cutout: nil, insets: UIEdgeInsets()))
++            let (textLayout, textApply) = makeTextLayout(TextNodeLayoutArguments(attributedString: string, backgroundColor: nil, maximumNumberOfLines: isMira ? 2 : 1, truncationType: .end, constrainedSize: CGSize(width: params.width - leftInset - rightInset, height: 100.0), alignment: .natural, cutout: nil, insets: UIEdgeInsets()))
+             
+-            let nodeLayout = ListViewItemNodeLayout(contentSize: CGSize(width: params.width, height: HashtagChatInputPanelItemNode.itemHeight), insets: UIEdgeInsets())
++            let nodeLayout = ListViewItemNodeLayout(contentSize: CGSize(width: params.width, height: isMira ? 52.0 : HashtagChatInputPanelItemNode.itemHeight), insets: UIEdgeInsets())
+             
+             return (nodeLayout, { animation in
+                 if let strongSelf = self {
+@@ -214,6 +227,11 @@ final class MentionChatInputPanelItemNode: ListViewItemNode {
+                     strongSelf.avatarNode.frame = CGRect(origin: CGPoint(x: params.leftInset + 12.0, y: floor((nodeLayout.contentSize.height - 30.0) / 2.0)), size: CGSize(width: 30.0, height: 30.0))
+                     strongSelf.textNode.frame = CGRect(origin: CGPoint(x: leftInset, y: floor((nodeLayout.contentSize.height - textLayout.size.height) / 2.0)), size: textLayout.size)
+                     
++                    strongSelf.badgeNode.image = badgeImage
++                    if let badgeImage {
++                        strongSelf.badgeNode.frame = CGRect(origin: CGPoint(x: params.width - params.rightInset - 12.0 - badgeImage.size.width, y: floor((nodeLayout.contentSize.height - badgeImage.size.height) / 2.0)), size: badgeImage.size)
++                    }
++                    
+                     strongSelf.separatorNode.isHidden = !mergedBottom
+                     
+                     strongSelf.separatorNode.frame = CGRect(origin: CGPoint(x: leftInset, y: !item.inverted ? (nodeLayout.contentSize.height - UIScreenPixel) : 0.0), size: CGSize(width: params.width - leftInset, height: UIScreenPixel))
+@@ -224,7 +242,7 @@ final class MentionChatInputPanelItemNode: ListViewItemNode {
+                     strongSelf.activateAreaNode.accessibilityValue = username
+                     strongSelf.activateAreaNode.frame = CGRect(origin: .zero, size: nodeLayout.size)
+                     
+-                    if case let .user(peer) = item.peer, let _ = peer.botInfo {
++                    if case let .user(peer) = item.peer, let _ = peer.botInfo, !isMira {
+                         strongSelf.setRevealOptions([ItemListRevealOption(key: 0, title: item.presentationData.strings.Common_Delete, icon: .none, color: item.presentationData.theme.list.itemDisclosureActions.destructive.fillColor, iconColor: item.presentationData.theme.list.itemDisclosureActions.destructive.foregroundColor, textColor: item.presentationData.theme.list.itemSecondaryTextColor, isDestructive: true)])
+                         strongSelf.setRevealOptionsOpened(item.revealed, animated: animation.isAnimated)
+                     } else {
+diff --git a/submodules/TelegramUIPreferences/Sources/ExperimentalUISettings.swift b/submodules/TelegramUIPreferences/Sources/ExperimentalUISettings.swift
+index 1631f3dd..7ac8215c 100644
+--- a/submodules/TelegramUIPreferences/Sources/ExperimentalUISettings.swift
++++ b/submodules/TelegramUIPreferences/Sources/ExperimentalUISettings.swift
+@@ -79,6 +79,8 @@ public struct ExperimentalUISettings: Codable, Equatable {
+     public var coreListChatBackend: Bool
+     public var forceRLottieBackend: Bool
+     public var respectSystemMicrophone: Bool
++    /// Prototype: AI assistants such as @mira offered first in group mention lists (see MiraAssistant.swift).
++    public var miraAssistant: Bool
+     public var useModernVideoMessagePipeline: Bool?
+ 
+     public static var defaultSettings: ExperimentalUISettings {
+@@ -134,7 +136,8 @@ public struct ExperimentalUISettings: Codable, Equatable {
+             coreListChatBackend: false,
+             forceRLottieBackend: false,
+             respectSystemMicrophone: false,
+-            useModernVideoMessagePipeline: nil
++            useModernVideoMessagePipeline: nil,
++            miraAssistant: true
+         )
+     }
+     
+@@ -190,7 +193,8 @@ public struct ExperimentalUISettings: Codable, Equatable {
+         coreListChatBackend: Bool,
+         forceRLottieBackend: Bool,
+         respectSystemMicrophone: Bool,
+-        useModernVideoMessagePipeline: Bool? = nil
++        useModernVideoMessagePipeline: Bool? = nil,
++        miraAssistant: Bool = true
+     ) {
+         self.keepChatNavigationStack = keepChatNavigationStack
+         self.skipReadHistory = skipReadHistory
+@@ -244,6 +248,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
+         self.forceRLottieBackend = forceRLottieBackend
+         self.respectSystemMicrophone = respectSystemMicrophone
+         self.useModernVideoMessagePipeline = useModernVideoMessagePipeline
++        self.miraAssistant = miraAssistant
+     }
+     
+     public init(from decoder: Decoder) throws {
+@@ -301,6 +306,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
+         self.forceRLottieBackend = try container.decodeIfPresent(Bool.self, forKey: "forceRLottieBackend") ?? false
+         self.respectSystemMicrophone = try container.decodeIfPresent(Bool.self, forKey: "respectSystemMicrophone") ?? false
+         self.useModernVideoMessagePipeline = try container.decodeIfPresent(Bool.self, forKey: "useModernVideoMessagePipeline")
++        self.miraAssistant = try container.decodeIfPresent(Bool.self, forKey: "miraAssistant") ?? true
+     }
+     
+     public func encode(to encoder: Encoder) throws {
+@@ -358,6 +364,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
+         try container.encodeIfPresent(self.forceRLottieBackend, forKey: "forceRLottieBackend")
+         try container.encodeIfPresent(self.respectSystemMicrophone, forKey: "respectSystemMicrophone")
+         try container.encodeIfPresent(self.useModernVideoMessagePipeline, forKey: "useModernVideoMessagePipeline")
++        try container.encode(self.miraAssistant, forKey: "miraAssistant")
+     }
+ }
+ 
