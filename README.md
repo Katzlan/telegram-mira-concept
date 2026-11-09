@@ -14,7 +14,8 @@ Telegram concept for **iOS** (UIKit / AsyncDisplayKit, SwiftUI for the panel), b
 
 | Demo |
 |---|
-| [Media/mira.mp4](Media/mira.mp4) |
+
+https://github.com/user-attachments/assets/0b45acf6-68f7-4e83-9e1a-f59fe652f079
 
 ## Repository
 
